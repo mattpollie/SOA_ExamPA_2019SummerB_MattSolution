@@ -1,0 +1,67 @@
+---
+title: "SOA_ExamPA_Solution_Matt"
+author: "Matt"
+date: "July 5, 2020"
+output: html_document
+---
+
+```{r}
+#Call required libraries and check working directory
+
+library(MASS)
+library(dplyr)
+library(caret)
+library(ggplot2)
+
+getwd()
+
+```
+
+```{r}
+
+#Import data
+
+data_0 <- read.csv("2019-06-14-exam-pa-data-file.csv")
+
+#Summarize data
+
+summary(data_0)
+str(data_0)
+
+```
+```{r}
+#Use dplyr to generate summary statistics for Crash_Score by each dependent variable
+
+#Set up for loop for creating summary tables
+iterate <- 2:length(colnames(data_0))
+for (i in iterate){
+    table <- as.data.frame(data_0 %>% group_by_at(colnames(data_0)[i]) %>% summarise(max = max(Crash_Score), min = min(Crash_Score), avg = mean(Crash_Score), "25th" = quantile(Crash_Score, 0.25), "50th" = quantile(Crash_Score, 0.5), "75th" = quantile(Crash_Score, 0.75)))
+  
+  print(table)
+}
+#Clean up variables
+rm(list = c("iterate", "i", "table"))
+
+```
+
+```{r}
+
+#Create boxplots for all Crash_Score vs. all predictor variables
+
+#Need to convert integer variables to factors in order to create box plots
+data_0_plot <- data_0
+data_0_plot[sapply(data_0, is.integer)] <- lapply(data_0_plot[sapply(data_0, is.integer)], as.factor)
+
+#Set up for loop for creating graphs
+iterate <- 2:length(colnames(data_0))
+for (i in iterate){
+    plot <- ggplot(data = data_0_plot, aes_string(x = colnames(data_0_plot[i]), y = "Crash_Score")) + geom_boxplot() + labs(x = colnames(data_0_plot)[i], title = paste("Distribution of Crash_Score v.", colnames(data_0_plot)[i]))
+  print(plot)
+}
+#Clean up variables
+rm(list = c("iterate", "i", "plot", "data_0_plot"))
+
+
+```
+
+
