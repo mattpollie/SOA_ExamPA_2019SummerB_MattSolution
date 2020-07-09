@@ -63,5 +63,60 @@ rm(list = c("iterate", "i", "plot", "data_0_plot"))
 
 
 ```
+```{r}
+#Combine factor levels where there are few observations
+
+#Create a list of tables to count observations at each level for each factor variable
+
+iterate <- 4:length(data_0)
+factor_table_list <- list()
+
+for (i in iterate) {
+    factor_table <- table(data_0[, i])
+  factor_table_list[[i-3]] <- factor_table
+  names(factor_table_list)[i-3] <- colnames(data_0)[i]
+ }
+rm(list = c("i", "iterate", "factor_table"))
+
+factor_table_list
+
+data_1 <- data_0
+
+#Use dplyr joins to consolidate factor levels for "Time_of_Day"
+#1 = OVERNIGHT, 2 = LATE-EARLY, 3 = DAYTIME, 4 = DAYTIME, 5 = DAYTIME, 6 = LATE-EARLY
+
+df_TimeOfDay_Conv <- data.frame(Time_of_Day = 1:6, Conv = c("OVERNIGHT", "LATE-EARLY", "DAYTIME", "DAYTIME", "DAYTIME", "LATE-EARLY"))
+df_TimeOfDay_Conv$Conv <- as.factor(df_TimeOfDay_Conv$Conv)
+data_1 <- left_join(data_1, df_TimeOfDay_Conv, by = "Time_of_Day")
+data_1$Time_of_Day <- data_1$Conv
+data_1$Conv <- NULL
+rm(df_TimeOfDay_Conv)
+
+#Using dplyr to perform joins where column names used for matching have different names. Convert Rd_Feature where:
+#INTERSECTION = INTERSECTION-RAMP, RAMP = INTERSECTION-RAMP, NONE = OTHER, OTHER = OTHER, DRIVEWAY = OTHER
+
+df_RdFeature_Conv <- data.frame(Rd_Feature_Test = c("INTERSECTION", "RAMP", "NONE", "OTHER", "DRIVEWAY"), Conv = c("INTERSECTION-RAMP", "INTERSECTION-RAMP", "OTHER", "OTHER", "OTHER"))
+df_RdFeature_Conv$Rd_Feature_Test <- as.factor(df_RdFeature_Conv$Rd_Feature_Test)
+df_RdFeature_Conv$Conv <- as.factor(df_RdFeature_Conv$Conv)
+data_1 <- left_join(data_1, df_RdFeature_Conv, by = c("Rd_Feature" = "Rd_Feature_Test"))
+data_1$Rd_Feature <- data_1$Conv
+data_1$Conv <- NULL
+rm(df_RdFeature_Conv)
+
+#Consolidate Rd_Character using string functions
+data_1$Rd_Character <- as.character(data_1$Rd_Character)
+data_1$Rd_Character <- ifelse(substr(data_1$Rd_Character, nchar(data_1$Rd_Character) - 4, nchar(data_1$Rd_Character)) == "OTHER", "OTHER", 
+                                   ifelse(substr(data_1$Rd_Character, 1, 5) == "CURVE", "CURVE", "STRAIGHT"))
+data_1$Rd_Character <- as.factor(data_1$Rd_Character)
+
+#Consolidate Traffic_Control where:
+#NONE = OTHER, OTHER = OTHER, all other levels = CONTROLLED
+
+data_1$Traffic_Control <- ifelse(data_1$Traffic_Control == "NONE", "OTHER", 
+                                 ifelse(data_1$Traffic_Control == "OTHER", "OTHER", "CONTROLLED"))
+data_1$Traffic_Control <- as.factor(data_1$Traffic_Control)
+summary(data_1$Traffic_Control)
+summary(data_0$Traffic_Control)
+```
 
 
