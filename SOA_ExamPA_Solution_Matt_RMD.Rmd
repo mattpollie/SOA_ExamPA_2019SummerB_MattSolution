@@ -10,6 +10,7 @@ output: html_document
 
 library(MASS)
 library(dplyr)
+library(tidyr)
 library(caret)
 library(ggplot2)
 
@@ -18,7 +19,6 @@ getwd()
 ```
 
 ```{r}
-
 #Import data
 
 data_0 <- read.csv("2019-06-14-exam-pa-data-file.csv")
@@ -66,21 +66,26 @@ rm(list = c("iterate", "i", "plot", "data_0_plot"))
 ```{r}
 #Combine factor levels where there are few observations
 
+#Create new data frame to begin consolidating levels of factor variables
+data_1 <- data_0
+
+#Convert character variables to factor variables
+
+data_1[sapply(data_1, is.character)] <- lapply(data_1[sapply(data_1, is.character)], as.factor)
+str(data_1)
+
+
 #Create a list of tables to count observations at each level for each factor variable
 
 iterate <- 4:length(data_0)
-factor_table_list <- list()
+factor_table_list_pre <- list()
 
 for (i in iterate) {
     factor_table <- table(data_0[, i])
-  factor_table_list[[i-3]] <- factor_table
-  names(factor_table_list)[i-3] <- colnames(data_0)[i]
+  factor_table_list_pre[[i-3]] <- factor_table
+  names(factor_table_list_pre)[i-3] <- colnames(data_0)[i]
  }
 rm(list = c("i", "iterate", "factor_table"))
-
-factor_table_list
-
-data_1 <- data_0
 
 #Use dplyr joins to consolidate factor levels for "Time_of_Day"
 #1 = OVERNIGHT, 2 = LATE-EARLY, 3 = DAYTIME, 4 = DAYTIME, 5 = DAYTIME, 6 = LATE-EARLY
@@ -115,8 +120,149 @@ data_1$Rd_Character <- as.factor(data_1$Rd_Character)
 data_1$Traffic_Control <- ifelse(data_1$Traffic_Control == "NONE", "OTHER", 
                                  ifelse(data_1$Traffic_Control == "OTHER", "OTHER", "CONTROLLED"))
 data_1$Traffic_Control <- as.factor(data_1$Traffic_Control)
-summary(data_1$Traffic_Control)
-summary(data_0$Traffic_Control)
+
+str(data_1)
+
+```
+
+```{r}
+#Hold for PCA 
+
+```
+
+```{r}
+#Select an interaction term
+
+
+#This code produces data frames for each combination of factor variables, but it doesn't identify the variable names of the column features which makes it difficult to read. Comment out and instead use coding below.
+
+
+# iterate_i <- 1:10
+# for(i in iterate_i){
+#   iterate_j <- (i + 1):11
+#   for(j in iterate_j){
+#     print(paste(colnames(data_1)[i + 3], "vs.", colnames(data_1)[j + 3], sep = " "))
+#     ifelse(i == j,  
+#            table_interaction <- as.data.frame(data_1 %>% group_by_(colnames(data_1)[i + 3], colnames(data_1)[j + 3]) %>% summarise(Avg = mean(Crash_Score))),
+#           table_interaction <- spread(as.data.frame(data_1 %>% group_by_(colnames(data_1)[i + 3], colnames(data_1)[j + 3]) %>% summarise(Avg = mean(Crash_Score))), colnames(data_1)[j + 3], Avg))
+#     print(table_interaction)
+#   }
+# }
+# 
+# rm(list = c("table_interaction", "iterate_i", "iterate_j", "i", "j"))
+
+
+#Revises the coding above to move all of the data frames into a list. Better than above, but still difficult to read
+interaction_list <- list()
+iterate_i <- 1:10
+for(i in iterate_i){
+  iterate_j <- (i + 1):11
+  for(j in iterate_j){
+    ifelse(i == j,  
+           table_interaction <- as.data.frame(data_1 %>% group_by_(colnames(data_1)[i + 3], colnames(data_1)[j + 3]) %>% summarise(Avg = mean(Crash_Score))),
+          table_interaction <- spread(as.data.frame(data_1 %>% group_by_(colnames(data_1)[i + 3], colnames(data_1)[j + 3]) %>% summarise(Avg = mean(Crash_Score))), colnames(data_1)[j + 3], Avg))
+    interaction_list[[paste(colnames(data_1)[i + 3], "vs.", colnames(data_1)[j + 3], sep = " ")]] <- table_interaction
+  }
+}
+interaction_list
+
+rm(list = c("table_interaction", "iterate_i", "iterate_j", "i", "j"))
+
+#Include an interaction term between Rd_Character and Rd_Class in the analysis
+interaction_list$`Rd_Character vs. Rd_Class`
+```
+
+```{r}
+#Create a baseline linear model. Crash_Score is never negative, so a linear model isn't actually appropriate, but we'll establish one for comparison purposes.
+
+
+lm_baseline <- lm(Crash_Score ~ ., data = data_1)
+summary(lm_baseline)
+
+#R-squared is only 0.25, so it's not a great model. The F-statistic results in a p-value that indicates there is a relationshipbetween the predictor variables and Crash_Score.
+
+```
+
+```{r}
+
+#Use stepwise selection to choose variables to include in a linear model. See if that produces a better fit than the baseline linear model.
+
+#First need to binarize all the factor variables
+data_1_factor <- data_1[, as.vector(sapply(data_1, class) == "factor")]
+
+formula_factorVars <- paste("~", paste(colnames(data_1_factor), collapse = "+"))
+vars <- dummyVars(formula_factorVars, data_1_factor, fullRank = TRUE)
+data_1_factor_binarized <- predict(vars, data_1_factor)
+
+data_1_binarized <- cbind(data_1[, as.vector(sapply(data_1, class) != "factor")], data_1_factor_binarized)
+rm(list = c("data_1_factor", "data_1_factor_binarized", "formula_factorVars", "vars"))
+
+#Create a model where features are chosen using stepwise selection
+#Formulas cannot contain spaces or hyphens. Replace them with underscores using gsub()
+colnames(data_1_binarized) <- gsub(" ", "_", gsub("-", "_", colnames(data_1_binarized)))
+formula_allVars_binarized <- as.formula(gsub("-", "_", gsub(" ", "_", paste("Crash_Score", paste(colnames(data_1_binarized)[-1], collapse = "+"), sep = "~"))))
+lm_baseline_binarized <- lm(formula_allVars_binarized, data = data_1_binarized)
+summary(lm_baseline_binarized) #Confirms that this model produces the same results as the baseline. The only difference is that it manually binarizes the factor variables before running them through the model.
+
+#Stepwise selection
+lm_linear_stepAIC <- stepAIC(lm_baseline_binarized, direction = "backward", trace = FALSE) #trace = FALSE suppresses the output
+summary(lm_linear_stepAIC)
+
+#The model built using backward stepwise selection has a lower R-squared value, but a greater adjusted R-squared value (because of fewer predictor variables included in the model). It's still a bad model
+
+```
+
+```{r}
+#Check for collinearity of among the predictor variables by reviewing the variance inflation factor (VIF) for each of the predictor variables.
+
+vars <- colnames(data_1_binarized)[-1]
+df_VIF <- data.frame(Predictor = colnames(data_1_binarized[-1]))
+df_VIF$R2 <- 0
+iterate <- 1:nrow(df_VIF)
+
+for (i in iterate){
+  formula_VIF <- as.formula(paste(vars[i], paste(vars[-i], collapse = "+"), sep = "~"))
+  lm_VIF <- lm(formula_VIF, data = data_1_binarized)
+  df_VIF[i, 2] <- summary(lm_VIF)[[8]]
+}
+df_VIF$VIF <- 1 / (1 - df_VIF$R2)
+df_VIF
+
+#Because none of the VIF values are greater than 10, the predictor variables are independent.
+rm(list = c("vars", "iterate", "i", "formula_VIF", "lm_VIF"))
+
 ```
 
 
+
+
+```{r}
+# #Check for high-leverage points.
+
+# #R won't calculate this hate matrix because it would have dimensions 23,137 x 23,137.
+# #Tried to simplify the calculations by calculating only the diagonal values of the hat matrix, but it was still too computationally intensive. Look into whether or not there is a more efficient way to calculate leverage.
+# 
+# X <- as.matrix(cbind(intercept = rep(1, nrow(data_1_binarized)), data_1_binarized[-1]))
+# iterate <- 1:nrow(data_1_binarized)
+# for (i in iterate){
+#   Hat[i] <- (t(as.matrix(X[i, ])) %*% solve(t(X) %*% X) %*% as.matrix(X[i, ]))
+# }
+# 
+# If these calculations had worked, we could have added a new variable to the data to flag the points with high leverage.
+
+```
+
+```{r}
+#Residual analysis of baseline model
+
+plot(lm_baseline)
+
+#Coding to recreate the Residuals vs. Fitted Values Graph in ggplot2
+pred_lm_baseline <- predict(lm_baseline, data_1)
+residuals_lm_baseline_std <- lm_baseline$residuals / (sum(lm_baseline$residuals^2) / (length(lm_baseline$residuals) - nrow(summary(lm_baseline)[[4]])))
+df_residual_plot <- data.frame(Fitted = pred_lm_baseline, StdResiduals = residuals_lm_baseline_std)
+plot_residuals_lm_baseline_std <- ggplot(data = df_residual_plot, aes(x = Fitted, y = StdResiduals)) + geom_point() + geom_smooth(method = lm) #Residual line is horizontal at zero. Is that on purpose? Probably. Not sure why the residual line for the plot() function doesn't match.
+plot_residuals_lm_baseline_std
+rm(list = c("pred_lm_baseline", "residuals_lm_baseline_std", "df_residual_plot", "plot_residuals_lm_baseline_std"))
+
+```
